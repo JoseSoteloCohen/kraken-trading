@@ -9,7 +9,10 @@ Run: python3 generate_dashboard.py
 """
 import json
 import re
+import sys
 from pathlib import Path
+
+import ta_charts
 
 ROOT = Path(__file__).parent
 
@@ -184,8 +187,74 @@ STATUS_LABELS = {
     "info": "OBSERVATION",
 }
 
+PAIR_LABELS = {"BTCEUR": "BTC/EUR", "ETHEUR": "ETH/EUR"}
 
-def render(entries, levels_info):
+
+def _ds(label, data, color, dash=None, hidden=False, width=1.5):
+    d = {
+        "label": label, "data": data, "borderColor": color,
+        "backgroundColor": "transparent", "borderWidth": width,
+        "pointRadius": 0, "tension": 0.1, "fill": False,
+    }
+    if dash:
+        d["borderDash"] = dash
+    if hidden:
+        d["hidden"] = True
+    return d
+
+
+def _ta_datasets(d):
+    n = len(d["labels"])
+    datasets = [
+        _ds("Close", d["close"], "#e6e8eb", width=1.75),
+        _ds("EMA21", d["ema21"], "#4fa3ff"),
+        _ds("EMA55", d["ema55"], "#f2a93b"),
+        _ds("SMA200 (regime)", d["sma200"], "#9aa0ab", dash=[3, 3], hidden=True),
+        _ds(f"Donchian {ta_charts.ENTRY_LOOKBACK}d-high (entry channel)",
+            d["donchian_high"], "#3ddc84", dash=[6, 3]),
+        _ds(f"Tight {ta_charts.TIGHT_EXIT}d-low (exit)",
+            d["tight_low"], "#ff6b6b", dash=[4, 4], hidden=True),
+        _ds(f"Wide {ta_charts.WIDE_EXIT}d-low (exit)",
+            d["wide_low"], "#c0392b", dash=[2, 2], hidden=True),
+    ]
+    if d["up_trigger"]:
+        datasets.append(_ds("Upside trigger (levels_watch)", [d["up_trigger"]] * n, "#c792ea", dash=[8, 4]))
+    if d["down_trigger"]:
+        datasets.append(_ds("Downside trigger (levels_watch)", [d["down_trigger"]] * n, "#e07b53", dash=[8, 4]))
+    return datasets
+
+
+def render_ta_section(ta_data):
+    """Returns (cards_html, scripts_js) for the Technical Analysis section."""
+    cards = ""
+    scripts = ""
+    for pair, label in PAIR_LABELS.items():
+        d = ta_data.get(pair)
+        cid = pair.lower()
+        if d is None:
+            cards += f"""
+        <div class="ta-card">
+          <h3>{label}</h3>
+          <p class="subtitle">Live chart data unavailable this run (Kraken API unreachable). See the
+          Current Levels and journal above for the last reviewed snapshot.</p>
+        </div>"""
+            continue
+        comment_html = "".join(f"<li>{line}</li>" for line in d["commentary"])
+        cards += f"""
+        <div class="ta-card">
+          <h3>{label} <span class="ta-asof">as of {d['last_date']}</span></h3>
+          <div class="chart-wrap"><canvas id="{cid}PriceChart"></canvas></div>
+          <div class="chart-wrap ta-rsi"><canvas id="{cid}RsiChart"></canvas></div>
+          <ul class="ta-comment">{comment_html}</ul>
+        </div>"""
+        scripts += (
+            f"makeTAChart('{cid}PriceChart', {json.dumps(d['labels'])}, {json.dumps(_ta_datasets(d))});\n"
+            f"makeRSIChart('{cid}RsiChart', {json.dumps(d['labels'])}, {json.dumps(d['rsi'])});\n"
+        )
+    return cards, scripts
+
+
+def render(entries, levels_info, ta_data):
     levels_html = ""
     for pair, lv in levels_info["levels"].items():
         levels_html += f"""
@@ -229,6 +298,7 @@ def render(entries, levels_info):
 
     run1_cum = cumulative(RUN1_PNL)
     run2_cum = cumulative(RUN2_PNL)
+    ta_cards, ta_scripts = render_ta_section(ta_data)
 
     html = f"""<!DOCTYPE html>
 <html lang="en">
@@ -285,6 +355,18 @@ def render(entries, levels_info):
   .chart-wrap h3 {{ margin-top: 0; color: var(--accent); }}
   .charts-row {{ display: flex; gap: 16px; flex-wrap: wrap; }}
   .charts-row .chart-wrap {{ flex: 1; min-width: 300px; }}
+
+  .ta-row {{ display: flex; gap: 16px; flex-wrap: wrap; margin-top: 16px; }}
+  .ta-card {{ flex: 1; min-width: 420px; background: var(--card); border: 1px solid var(--border); border-radius: 10px; padding: 16px; margin-bottom: 16px; }}
+  .ta-card h3 {{ margin-top: 0; color: var(--accent); }}
+  .ta-asof {{ color: var(--muted); font-size: 12px; font-weight: 400; margin-left: 8px; }}
+  .ta-card .chart-wrap {{ margin: 0 0 12px; padding: 12px; }}
+  .ta-rsi {{ height: 120px; position: relative; }}
+  .ta-rsi canvas {{ position: absolute; width: 100% !important; height: 100% !important; }}
+  .ta-comment {{ list-style: none; margin: 12px 0 0; padding: 0; font-size: 14px; color: var(--muted); line-height: 1.6; }}
+  .ta-comment li {{ padding: 4px 0; border-bottom: 1px solid var(--border); }}
+  .ta-comment li:last-child {{ border-bottom: none; font-weight: 700; color: var(--text); }}
+
   .disclaimer {{ background: #2a2310; border: 1px solid #5a4a1a; border-radius: 10px; padding: 14px; margin-top: 24px; font-size: 13px; color: #e0c98a; line-height: 1.6; }}
   footer {{ margin-top: 40px; color: var(--muted); font-size: 12px; text-align: center; }}
 </style>
@@ -297,6 +379,15 @@ def render(entries, levels_info):
   <div class="last-reviewed">Last reviewed: {levels_info['last_reviewed']}</div>
   <div class="levels-row">
     {levels_html}
+  </div>
+
+  <h2>Technical Analysis</h2>
+  <div class="subtitle">Price with the same EMA/regime/Donchian lines the mechanical watcher
+  (watch.py / backtester.py signals) computes, plus RSI(14) for context. Click legend items to
+  toggle lines. The "Read" notes below each chart are a factual readout, not a new signal —
+  decisions still follow watch.py / trading_journal.md.</div>
+  <div class="ta-row">
+    {ta_cards}
   </div>
 
   <h2>Daily / Weekly Trading Journal</h2>
@@ -359,6 +450,49 @@ function makeChart(id, labels, data) {{
 }}
 makeChart('run1Chart', run1Labels, run1Cum);
 makeChart('run2Chart', run2Labels, run2Cum);
+
+function makeTAChart(id, labels, datasets) {{
+  new Chart(document.getElementById(id), {{
+    type: 'line',
+    data: {{ labels: labels, datasets: datasets }},
+    options: {{
+      responsive: true,
+      interaction: {{ mode: 'index', intersect: false }},
+      plugins: {{ legend: {{ position: 'bottom', labels: {{ color: '#e6e8eb', boxWidth: 20 }} }} }},
+      scales: {{
+        x: {{ ticks: {{ color: '#9aa0ab', maxTicksLimit: 10 }}, grid: {{ color: '#2a2e38' }} }},
+        y: {{ ticks: {{ color: '#9aa0ab' }}, grid: {{ color: '#2a2e38' }} }}
+      }}
+    }}
+  }});
+}}
+
+function makeRSIChart(id, labels, rsiData) {{
+  new Chart(document.getElementById(id), {{
+    type: 'line',
+    data: {{
+      labels: labels,
+      datasets: [
+        {{ label: 'RSI(14)', data: rsiData, borderColor: '#c792ea', backgroundColor: 'transparent',
+           borderWidth: 1.5, pointRadius: 0, tension: 0.1 }},
+        {{ label: 'Overbought (70)', data: labels.map(() => 70), borderColor: '#9c2b2b',
+           borderDash: [4, 4], borderWidth: 1, pointRadius: 0 }},
+        {{ label: 'Oversold (30)', data: labels.map(() => 30), borderColor: '#1e7a34',
+           borderDash: [4, 4], borderWidth: 1, pointRadius: 0 }}
+      ]
+    }},
+    options: {{
+      responsive: true,
+      maintainAspectRatio: false,
+      plugins: {{ legend: {{ position: 'bottom', labels: {{ color: '#e6e8eb', boxWidth: 20 }} }} }},
+      scales: {{
+        x: {{ ticks: {{ color: '#9aa0ab', maxTicksLimit: 10 }}, grid: {{ color: '#2a2e38' }} }},
+        y: {{ min: 0, max: 100, ticks: {{ color: '#9aa0ab' }}, grid: {{ color: '#2a2e38' }} }}
+      }}
+    }}
+  }});
+}}
+{ta_scripts}
 </script>
 </body>
 </html>
@@ -366,10 +500,22 @@ makeChart('run2Chart', run2Labels, run2Cum);
     return html
 
 
+def build_ta_data():
+    ta_data = {}
+    for pair in PAIR_LABELS:
+        try:
+            ta_data[pair] = ta_charts.build_pair_data(pair)
+        except Exception as e:
+            print(f"warning: skipping TA charts for {pair}: {e}", file=sys.stderr)
+            ta_data[pair] = None
+    return ta_data
+
+
 def main():
     entries = parse_trading_journal()
     levels_info = parse_levels()
-    html = render(entries, levels_info)
+    ta_data = build_ta_data()
+    html = render(entries, levels_info, ta_data)
     out_path = ROOT / "dashboard.html"
     out_path.write_text(html)
     print(f"Wrote {out_path} ({len(entries)} journal entries, {len(BACKTEST_RUNS)} backtest runs)")
