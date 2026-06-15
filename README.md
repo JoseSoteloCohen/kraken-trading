@@ -60,6 +60,24 @@ for a daily-candle system — hourly just adds noise.
 - For a phone/email push, add a webhook call (Telegram/Pushover/email) to the end of `.claude/loop.md`
   — not wired up yet.
 
+## Run it in the cloud (computer off) — GitHub Actions (no Claude, free)
+
+`.github/workflows/daily-watch.yml` runs the mechanical watcher in GitHub's cloud on a daily cron
+(00:10 UTC), with **no secrets** and **no machine on**:
+
+- Runs `python3 watch.py --confirmed` — judging the **last completed daily candle**, so a break must
+  be a real daily *close*, not an intraday poke.
+- Every run writes a readable summary to the Actions run (the job summary).
+- **On a confirmed break** it opens a GitHub issue (labelled `kraken-break`, assigned to you) — which
+  GitHub emails you. If a break issue is already open it comments instead of spamming. It **never
+  trades** — the issue is a "go review for an entry" alert.
+
+Enable it once: push this repo, open the repo's **Actions** tab, enable workflows if prompted, then
+use **Run workflow** on "Kraken daily watch" to test on demand. After that it's automatic.
+
+This is the simplest true machine-off option; the Claude Routine above is the richer one (adds the
+judgment + journaling layer) if you want it.
+
 ## Rules baked in (see `backtest_journal.md` for the evidence)
 
 - Trade **confirmed breaks**, never reversals/bounces. Marginal pokes don't count (≥0.5–1% margin).

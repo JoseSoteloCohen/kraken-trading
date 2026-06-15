@@ -13,9 +13,14 @@ This is what a Claude Code Routine (or a plain cron job) runs once a day. It:
 It NEVER places a trade. It surfaces "all quiet" vs "a confirmed break may be forming — review for
 an entry." The decision stays with the user (and Claude, per the skill rules).
 
-Exit code: 0 = all quiet, 10 = at least one confirmed break (handy for `python3 watch.py || notify`).
+Exit code: 0 = all quiet, 10 = at least one confirmed break (handy for `python3 watch.py || notify`
+on a POSIX shell). The printed `RESULT:` line is the canonical signal — the GitHub Actions workflow
+keys off that, not the exit code, so it's robust even where a shell wrapper swallows the code.
+
+Pass `--confirmed` (scheduled/cloud runs) to judge the last COMPLETED daily candle instead of
+today's in-progress one — so a break must be a real daily CLOSE, not an intraday poke.
 """
-import re, sys, os
+import re, sys, os, argparse, datetime
 import backtester as bt
 
 PAIRS = ["BTCEUR", "ETHEUR"]
@@ -43,11 +48,21 @@ def parse_levels(path):
     return levels
 
 def main():
+    ap = argparse.ArgumentParser(description="Kraken mechanical daily watcher")
+    ap.add_argument("--confirmed", action="store_true",
+                    help="evaluate the last COMPLETED daily candle (drop today's in-progress "
+                         "candle), so a break must be a real daily CLOSE, not an intraday poke. "
+                         "Use this for scheduled daily runs.")
+    args = ap.parse_args()
+    today_utc = datetime.datetime.now(datetime.timezone.utc).strftime("%Y-%m-%d")
     levels = parse_levels(LEVELS_FILE)
     any_break = False
-    print(f"=== Kraken mechanical watch | break-quality margin {MARGIN*100:.2f}% ===\n")
+    mode = "CONFIRMED daily close" if args.confirmed else "intraday (in-progress candle)"
+    print(f"=== Kraken mechanical watch [{mode}] | break-quality margin {MARGIN*100:.2f}% ===\n")
     for pair in PAIRS:
         bars = bt.load(pair, refresh=True)
+        if args.confirmed:                       # drop today's still-forming candle
+            bars = [b for b in bars if bt.dstr(b["t"]) < today_utc]
         closes = [b["c"] for b in bars]
         live = bt.fetch_ticker(pair)
         last_close = closes[-1]; i = len(closes) - 1

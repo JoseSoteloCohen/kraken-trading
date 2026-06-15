@@ -745,6 +745,81 @@ user proceeds anyway, the least-bad configuration is: lowest tier/target, **mini
 max), and a hard intraday daily-loss stop well inside 3% — accepting it's a lottery, not an edge.
 `prop_sim.py` is the go/no-go gate for any candidate strategy.
 
+## Run 22: Cross-sectional momentum across 14 coins — first new-dimension edge hunt (FAILED pre-reg)
+
+First deliberate departure from single-asset time-series trend: rank a 14-coin Kraken universe (BTC,
+ETH, SOL, XRP, ADA, DOT, LINK, LTC, BCH, AVAX, ATOM, XLM, TRX, XMR; identical clean 721d window
+2024-06-25→2026-06-15) by recent relative strength, long top-K, rebalance every R days, vs an
+equal-weight basket. PRE-REGISTERED pass criterion: long top-K must beat the basket on OOS Sharpe
+CONSISTENTLY across configs (or the market-neutral top-minus-bottom spread has consistent +OOS
+Sharpe). Tool: `xsmom.py`.
+
+| config | long-only OOS Sharpe | long-short (mkt-neutral) OOS Sharpe |
+|---|---|---|
+| basket benchmark | −1.41 | — |
+| L20 R7 K3 | −1.49 | −0.06 |
+| L30 R7 K3 (primary) | −1.48 | −0.23 |
+| L60 R7 K3 | −0.76 | **+0.71** |
+| L90 R14 K4 | −1.06 | **+0.43** |
+| L30 R7 K4 | −1.72 | −0.42 |
+
+### Findings
+1. **FAILED the pre-registered criterion.** Primary config doesn't beat the basket OOS; long top-K
+   beats basket OOS in only 2/5 configs and is NEGATIVE absolute in all 5. Not consistent = noise by
+   our own rule (the Run 6/20 trap).
+2. **Faint theory-consistent thread:** longer lookbacks (L60/L90) beat shorter (L20/L30) in BOTH the
+   long-only and market-neutral tests, and the market-neutral spread goes +OOS (L60 +0.71). Matches
+   academic momentum (longer formation works; ~1mo contaminated by short-term reversal). First +OOS
+   Sharpe all session in a market-neutral form.
+3. **Not tradeable for us as-is:** the long-only leg (all a spot account can trade) is NEGATIVE OOS
+   even at L60 (−0.76). The positive lives in the SHORT leg (laggards fell harder than leaders rose)
+   — untradeable on spot, and carries Run-14 short problems (carry/leverage/liquidation). Same shape
+   as the whole project: beats the basket only by losing LESS in the bear, not by making money.
+4. **Underpowered sample:** 720d / one exchange / one up-into-bear cycle is too short for a slow
+   anomaly; 60–90d formation leaves a thin OOS window. "Failed + inconclusive," not "definitively
+   dead." Can't validate momentum on 2yr of one venue's data.
+
+**Verdict: no tradeable cross-sectional edge demonstrated.** The longer-lookback + short-leg flicker
+is the only lead, and it points toward MARKET-NEUTRAL / shorting constructions — which connects to the
+prop context (perps allow shorts; a low-vol market-neutral book suits a 6% DD limit better than
+directional). Next hypothesis to test: funding-rate carry (economically-grounded, low-vol) — needs
+perp/funding data tooling we don't yet have.
+
+## Run 23: Funding-rate carry first-cut — real but small, regime-dependent, fake-Sharpe trap
+
+Followed Run 22's lead (the only +OOS signal was market-neutral) to the one economically-grounded
+crypto edge: perpetual funding carry (delta-neutral long spot / short perp, harvest funding). Data
+EXISTS: Kraken Futures public API `GET futures.kraken.com/derivatives/api/v4/historicalfundingrates?
+symbol=PF_XBTUSD` → ~8,858 HOURLY funding obs/asset, 2025-06-10→2026-06-15 (~1yr). Use
+`relativeFundingRate` (the actual % rate); `fundingRatePrediction` in /tickers gives a forward look.
+
+| perp | gross carry 1yr | ann | maxDD | funding>0 | first 279d / last 90d |
+|---|---|---|---|---|---|
+| PF_XBTUSD | +4.9% | +4.7% | −0.5% | 75% | +5.1% / **−0.2%** |
+| PF_ETHUSD | +3.6% | +3.5% | −0.3% | 71% | +3.2% / +0.3% |
+| PF_SOLUSD | +0.9% | +0.9% | −1.7% | 57% | +1.5% / −0.6% |
+
+### Findings
+1. **The eye-popping Sharpe (58 BTC, 33 ETH) is a MODELING ARTIFACT — discard it.** It's the vol of
+   the administered funding RATE, not of the trade's P&L. Real risks (basis wobble, execution,
+   short-leg liquidation, funding flips) are exactly what the idealized "legs cancel perfectly" calc
+   omits. Triple-digit carry Sharpe = selling the artifact.
+2. **Yield is real but small:** ~3–5% gross/yr on BTC/ETH notional, before ~0.5–0.7% round-trip fees
+   (both legs) and the capital cost of funding two legs. Net-on-capital ≈ near/below risk-free (~4–5%
+   cash), with tail risk cash lacks.
+3. **Regime-dependent and currently NEGATIVE.** BTC carried +5.1% first 279d but −0.2% last 90d;
+   funding is negative now. Carry is a bull-market phenomenon (longs overpay for leverage); you're
+   effectively short the leverage-demand factor — small/steady then bites in a delever. Compensation
+   for risk, not free money.
+4. **Conflicts with the low-maintenance constraint** ([[kraken-trading-project]]: full-time job): two
+   legs, hourly funding, margin/liquidation/roll monitoring = far higher-touch than weekly spot calls.
+
+**Verdict: the most economically-real edge found all session, but too small / regime-dependent /
+high-maintenance to be a clear win for this user — and net-of-costs it barely clears cash.** A proper
+test (timed carry harvesting only positive funding, with basis + fee + liquidation modeling) is the
+only way to know if a TIMED version beats always-on, but the modest ceiling tempers the priority.
+Data tooling now proven (Kraken Futures v4 funding endpoint). Not built into a strategy yet.
+
 ## Future runs
 - Re-run `backtester.py validate` periodically as the OOS window grows / new regimes appear.
 - If ever pursuing the ensemble, size mean-rev below equal weight and re-validate.

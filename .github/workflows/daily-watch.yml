@@ -1,0 +1,84 @@
+name: Kraken daily watch
+
+# Machine-off mechanical watcher. Runs watch.py against the CONFIRMED daily close and, if a
+# break clears the break-quality margin, opens (or comments on) a GitHub issue — which emails
+# you automatically. No secrets needed: it uses the built-in GITHUB_TOKEN. It never trades.
+
+on:
+  schedule:
+    # 00:10 UTC daily — just after the prior day's daily candle closes. `--confirmed` drops
+    # today's in-progress candle, so this judges the day that just closed (robust to scheduler lag).
+    - cron: '10 0 * * *'
+  workflow_dispatch: {}        # "Run workflow" button for manual testing
+
+permissions:
+  contents: read
+  issues: write                # open/comment the alert issue
+
+concurrency:
+  group: kraken-watch
+  cancel-in-progress: false
+
+jobs:
+  watch:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'   # stdlib only — no pip install needed
+
+      - name: Run watcher (confirmed daily close)
+        id: watch
+        shell: bash
+        run: |
+          python3 watch.py --confirmed | tee watch_output.txt || true
+          if grep -q "RESULT: CONFIRMED BREAK" watch_output.txt; then
+            echo "break=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "break=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Write run summary
+        if: always()
+        shell: bash
+        run: |
+          {
+            echo '## Kraken daily watch'
+            echo ''
+            echo '```text'
+            cat watch_output.txt
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Alert on confirmed break
+        if: steps.watch.outputs.break == 'true'
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const fs = require('fs');
+            const out = fs.readFileSync('watch_output.txt', 'utf8').trim();
+            const today = new Date().toISOString().slice(0, 10);
+            const fenced = '```text\n' + out + '\n```';
+            const { owner, repo } = context.repo;
+            // De-dupe: if a break issue is already open, comment instead of spawning a new one.
+            const open = await github.rest.issues.listForRepo({
+              owner, repo, state: 'open', labels: 'kraken-break', per_page: 1,
+            });
+            if (open.data.length > 0) {
+              await github.rest.issues.createComment({
+                owner, repo, issue_number: open.data[0].number,
+                body: `Still breaking — ${today}\n\n${fenced}`,
+              });
+            } else {
+              await github.rest.issues.create({
+                owner, repo,
+                title: `⚠ Kraken confirmed break — ${today}`,
+                labels: ['kraken-break'],
+                assignees: [owner],
+                body: `A confirmed daily-close break fired. Review for an entry decision — `
+                    + `**do NOT auto-trade**.\n\n${fenced}\n\n`
+                    + `*Close this issue once you've reviewed/acted; a fresh one opens on the next new break.*`,
+              });
+            }
