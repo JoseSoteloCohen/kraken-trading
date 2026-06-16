@@ -25,6 +25,7 @@ import backtester as bt
 
 PAIRS = ["BTCEUR", "ETHEUR"]
 MARGIN = float(os.environ.get("BREAK_MARGIN", "0.005"))          # 0.5% break-quality filter
+ACCOUNT_EUR = 1000.0   # flat-balance assumption used only to size the break-alert proposal
 HERE = os.path.dirname(os.path.abspath(__file__))
 LEVELS_FILE = os.path.join(HERE, "levels_watch.md")
 JOURNAL_FILE = os.path.join(HERE, "trading_journal.md")
@@ -84,6 +85,31 @@ def journal_entries(results, confirmed):
             f.write("\n" + "\n\n".join(blocks) + "\n")
     return len(blocks)
 
+def _plan(pair, fired, close, tight, wide, regime):
+    """Decision-ready proposal printed when a break fires, so the alert arrives review-ready.
+    Long-only/spot: only an UPSIDE break is an entry; a downside break means stay in cash."""
+    sides = {s for s, _ in fired}
+    out = ["   --- decision-ready plan (PROPOSAL — review regime + news, then approve; never auto-traded) ---"]
+    if "LONG" in sides:
+        dist = (close - tight) / close if close else 0.0
+        units = ACCOUNT_EUR / close if close else 0.0
+        risk = ACCOUNT_EUR * dist
+        trim = "  [BEAR regime -> consider HALF size (Run 10)]" if regime == "BEAR" else ""
+        out += [
+            f"   LONG {pair}: entry ref €{close:,.0f} (the confirmed close)",
+            f"     initial stop = tight 8d-low €{tight:,.0f} ({dist*100:.1f}% below entry); "
+            f"widens to 10d-low €{wide:,.0f} once in profit (Run 19 two-stage)",
+            f"     size: full = flat cash ~€{ACCOUNT_EUR:,.0f} -> {units:.4f} units; "
+            f"max risk if stopped at the tight low ~€{risk:,.0f} ({dist*100:.1f}%){trim}",
+            "     NO fixed take-profit (Run 7) — the trailing two-stage stop decides the exit.",
+        ]
+    if "SHORT" in sides:
+        out += [
+            f"   DOWNSIDE break {pair}: long-only/spot (Run 14) — NO short.",
+            "     if FLAT: stay in cash. If holding a long: the two-stage trailing stop is your exit.",
+        ]
+    return "\n".join(out)
+
 def main():
     ap = argparse.ArgumentParser(description="Kraken mechanical daily watcher")
     ap.add_argument("--confirmed", action="store_true",
@@ -126,6 +152,7 @@ def main():
             any_break = True
             for _, msg in fired:
                 print(f"   ** CONFIRMED {msg}")
+            print(_plan(pair, fired, last_close, tight, wide, regime))
         else:
             dists = []
             if up:   dists.append(f"upside €{up:,.0f} ({(up/last_close-1)*100:+.1f}%)")
