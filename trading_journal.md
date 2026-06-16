@@ -38,7 +38,7 @@ Entry template:
 - Action taken: no action.
 - Prediction: stay FLAT; watch daily for a confirmed close beyond €51,000 (down) or €57,500 (up)
   with >=0.5-1% margin. Re-check at next weekly review (~2026-06-22) or sooner on a confirmed break.
-- Review (filled in later): _pending_.
+- Review: BTC 06-15 closed €57,189 — stayed below the €57,500 upside trigger; no break. FLAT correct. 06-16 drifted back toward ~€56,600.
 
 ### 2026-06-15 — ETHEUR
 - Market snapshot: price ~€1,478.72 (last close €1,481 on 2026-06-14). Regime BEAR (200d MA €2,060).
@@ -52,11 +52,11 @@ Entry template:
 - Action taken: no action.
 - Prediction: stay FLAT; watch daily for a confirmed close beyond €1,400 (down) or €1,550 (up)
   with >=0.5-1% margin. Re-check at next weekly review (~2026-06-22) or sooner on a confirmed break.
-- Review (filled in later): _pending_.
+- Review: ETH 06-15 closed €1,549 — just under the €1,550 trigger and well below the €1,558 confirm level; the intraday relief-rally spike (high €1,594) faded by the close. FLAT correct.
 
 ### 2026-06-15 21:36 — ETHEUR
 - Market snapshot: intraday re-check (US–Iran peace-deal relief rally lifted both pairs). ETH price ~€1,567, today's in-progress daily candle high €1,594, poking ~1.2% ABOVE the €1,550 upside trigger — but this is the IN-PROGRESS candle, NOT a confirmed daily close. Regime BEAR (200d MA €2,055), EMA bear (21=€1,557 < 55=€1,708), still far below the Donchian 20d-high €1,780. BTC similar lift to ~€57,300, still ~0.3% BELOW its €57,500 trigger.
 - Recommendation/reasoning: FLAT — do not chase. The break is unconfirmed (intraday poke, not a daily close; Run 5 showed these whipsaw), the catalyst is macro relief not ETH-specific, and the structure is still bearish. No both-systems agreement.
 - Action taken: no action.
 - Prediction: decision is the 00:00 UTC daily close. Confirm = a daily CLOSE ≥ ~€1,558 (ETH) or ~€57,790 (BTC) → CAUTIOUS reduced-size LONG candidate to review (never auto-trade). A fade back under = stay FLAT. The GitHub Actions watcher (watch.py --confirmed) catches the confirmed close at 00:10 UTC.
-- Review (filled in later): _pending_.
+- Review: Confirmed NO break — ETH 06-15 closed €1,549, below the €1,558 confirm level. The intraday poke faded exactly as flagged; waiting for the daily close avoided a whipsaw (validates the Run 5 break-quality discipline).
