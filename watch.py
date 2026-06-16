@@ -27,6 +27,7 @@ PAIRS = ["BTCEUR", "ETHEUR"]
 MARGIN = float(os.environ.get("BREAK_MARGIN", "0.005"))          # 0.5% break-quality filter
 HERE = os.path.dirname(os.path.abspath(__file__))
 LEVELS_FILE = os.path.join(HERE, "levels_watch.md")
+JOURNAL_FILE = os.path.join(HERE, "trading_journal.md")
 SECTION = {"BTCEUR": "BTC/EUR", "ETHEUR": "ETH/EUR"}
 
 def parse_levels(path):
@@ -47,18 +48,58 @@ def parse_levels(path):
                 levels[pair][key] = float(lm.group(1).replace(",", ""))
     return levels
 
+def journal_entries(results, confirmed):
+    """Append a dashboard-compatible entry per pair to trading_journal.md, skipping any pair
+    whose date already has an entry (idempotent). Returns the number of entries written."""
+    existing = open(JOURNAL_FILE, encoding="utf-8").read() if os.path.exists(JOURNAL_FILE) else ""
+    blocks = []
+    for r in results:
+        if re.search(rf"^### {re.escape(r['date'])}(?: \d{{2}}:\d{{2}})? — {re.escape(r['pair'])}\b",
+                     existing, re.M):
+            continue                                      # already logged this date+pair
+        if r["fired"]:
+            side = r["fired"][0][0]
+            verdict = (f"{side} candidate — confirmed {'upside' if side == 'LONG' else 'downside'} "
+                       f"break (review, never auto-trade)")
+        else:
+            verdict = "FLAT — no confirmed break"
+        ema = "bull" if r["ef"] > r["es"] else "bear"
+        trig = [t for t in ((f"down €{r['down']:,.0f}" if r["down"] else ""),
+                            (f"up €{r['up']:,.0f}" if r["up"] else "")) if t]
+        snap = (f"automated daily watch ({'confirmed close' if confirmed else 'intraday'}). "
+                f"price ~€{r['close']:,.0f}. Regime {r['regime']} (200d MA €{r['ma200']:,.0f}). "
+                f"EMA 21/55 {ema} ({r['ef']:,.0f}/{r['es']:,.0f}). Donchian 20d-high €{r['ph']:,.0f}. "
+                f"Two-stage exit tight8 €{r['tight']:,.0f}/wide10 €{r['wide']:,.0f}. "
+                f"Triggers: {', '.join(trig) if trig else 'none set'}.")
+        blocks.append(
+            f"### {r['date']} — {r['pair']}\n"
+            f"- Market snapshot: {snap}\n"
+            f"- Recommendation/reasoning: {verdict}. Mechanical daily watch (GitHub Actions); the "
+            f"human/Claude layer makes the actual call on a confirmed break.\n"
+            f"- Action taken: no action (mechanical watch — never trades).\n"
+            f"- Prediction: re-checked daily; a confirmed break = daily close beyond a trigger by >=0.5%.\n"
+            f"- Review (filled in later): _pending_.")
+    if blocks:
+        with open(JOURNAL_FILE, "a", encoding="utf-8") as f:
+            f.write("\n" + "\n\n".join(blocks) + "\n")
+    return len(blocks)
+
 def main():
     ap = argparse.ArgumentParser(description="Kraken mechanical daily watcher")
     ap.add_argument("--confirmed", action="store_true",
                     help="evaluate the last COMPLETED daily candle (drop today's in-progress "
                          "candle), so a break must be a real daily CLOSE, not an intraday poke. "
                          "Use this for scheduled daily runs.")
+    ap.add_argument("--journal", action="store_true",
+                    help="append a dashboard-compatible entry per pair to trading_journal.md "
+                         "(idempotent per date+pair). Use on scheduled runs to keep a record.")
     args = ap.parse_args()
     today_utc = datetime.datetime.now(datetime.timezone.utc).strftime("%Y-%m-%d")
     levels = parse_levels(LEVELS_FILE)
     any_break = False
     mode = "CONFIRMED daily close" if args.confirmed else "intraday (in-progress candle)"
     print(f"=== Kraken mechanical watch [{mode}] | break-quality margin {MARGIN*100:.2f}% ===\n")
+    results = []
     for pair in PAIRS:
         bars = bt.load(pair, refresh=True)
         if args.confirmed:                       # drop today's still-forming candle
@@ -66,30 +107,37 @@ def main():
         closes = [b["c"] for b in bars]
         live = bt.fetch_ticker(pair)
         last_close = closes[-1]; i = len(closes) - 1
+        cdate = bt.dstr(bars[-1]["t"])
         ph = max(closes[i-20:i]); tight = min(closes[i-8:i]); wide = min(closes[i-10:i])
         ef, es = bt.ema(closes, 21), bt.ema(closes, 55)
         ma200 = bt.sma(closes, 200)[-1]
         regime = "BULL" if (ma200 and last_close > ma200) else "BEAR"
         lv = levels[pair]; up, down = lv["up"], lv["down"]
-        print(f"-- {pair} -- live {live:,.0f} | last daily close {last_close:,.0f} ({bt.dstr(bars[-1]['t'])})")
+        print(f"-- {pair} -- live {live:,.0f} | last daily close {last_close:,.0f} ({cdate})")
         print(f"   Regime(200d {ma200:,.0f}): {regime} | EMA21 {ef[-1]:,.0f} {'>' if ef[-1]>es[-1] else '<'} EMA55 {es[-1]:,.0f}")
         print(f"   Donchian 20d-high {ph:,.0f} | two-stage exit: tight8 {tight:,.0f} / wide10 {wide:,.0f}")
         # Break-quality filter on the canonical DAILY CLOSE (the skill defines breaks on closes).
         fired = []
         if up and last_close >= up * (1 + MARGIN):
-            fired.append(f"UPSIDE break: close {last_close:,.0f} cleared €{up:,.0f} by {(last_close/up-1)*100:.1f}% -> LONG candidate")
+            fired.append(("LONG", f"UPSIDE break: close {last_close:,.0f} cleared €{up:,.0f} by {(last_close/up-1)*100:.1f}% -> LONG candidate"))
         if down and last_close <= down * (1 - MARGIN):
-            fired.append(f"DOWNSIDE break: close {last_close:,.0f} cleared €{down:,.0f} by {(1-last_close/down)*100:.1f}% -> SHORT candidate")
+            fired.append(("SHORT", f"DOWNSIDE break: close {last_close:,.0f} cleared €{down:,.0f} by {(1-last_close/down)*100:.1f}% -> SHORT candidate"))
         if fired:
             any_break = True
-            for f in fired:
-                print(f"   ** CONFIRMED {f}")
+            for _, msg in fired:
+                print(f"   ** CONFIRMED {msg}")
         else:
             dists = []
             if up:   dists.append(f"upside €{up:,.0f} ({(up/last_close-1)*100:+.1f}%)")
             if down: dists.append(f"downside €{down:,.0f} ({(down/last_close-1)*100:+.1f}%)")
             print(f"   all quiet — nearest: {', '.join(dists) if dists else 'no levels set'}")
         print()
+        results.append(dict(pair=pair, date=cdate, close=last_close, regime=regime, ma200=ma200,
+                            ef=ef[-1], es=es[-1], ph=ph, tight=tight, wide=wide, up=up, down=down,
+                            fired=fired))
+    if args.journal:
+        n = journal_entries(results, args.confirmed)
+        print(f"[journal] appended {n} entr{'y' if n == 1 else 'ies'} to {os.path.basename(JOURNAL_FILE)}\n")
     if any_break:
         print("RESULT: CONFIRMED BREAK — review for an entry decision (do NOT auto-trade).")
         sys.exit(10)

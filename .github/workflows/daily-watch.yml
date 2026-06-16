@@ -1,8 +1,9 @@
 name: Kraken daily watch
 
-# Machine-off mechanical watcher. Runs watch.py against the CONFIRMED daily close and, if a
-# break clears the break-quality margin, opens (or comments on) a GitHub issue — which emails
-# you automatically. No secrets needed: it uses the built-in GITHUB_TOKEN. It never trades.
+# Machine-off mechanical watcher. Runs watch.py against the CONFIRMED daily close, appends a
+# record to trading_journal.md, regenerates dashboard.html, commits both back, and — if a break
+# clears the break-quality margin — opens (or comments on) a GitHub issue (which emails you).
+# No secrets needed: it uses the built-in GITHUB_TOKEN. It never trades.
 
 on:
   schedule:
@@ -12,7 +13,7 @@ on:
   workflow_dispatch: {}        # "Run workflow" button for manual testing
 
 permissions:
-  contents: read
+  contents: write              # commit the journal + dashboard back to the repo
   issues: write                # open/comment the alert issue
 
 concurrency:
@@ -29,15 +30,32 @@ jobs:
         with:
           python-version: '3.12'   # stdlib only — no pip install needed
 
-      - name: Run watcher (confirmed daily close)
+      - name: Run watcher + journal (confirmed daily close)
         id: watch
         shell: bash
         run: |
-          python3 watch.py --confirmed | tee watch_output.txt || true
+          python3 watch.py --confirmed --journal | tee watch_output.txt || true
           if grep -q "RESULT: CONFIRMED BREAK" watch_output.txt; then
             echo "break=true" >> "$GITHUB_OUTPUT"
           else
             echo "break=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Regenerate dashboard
+        shell: bash
+        run: python3 generate_dashboard.py
+
+      - name: Commit journal + dashboard if changed
+        shell: bash
+        run: |
+          git config user.name  "kraken-watch-bot"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add trading_journal.md dashboard.html
+          if git diff --cached --quiet; then
+            echo "No journal/dashboard changes to commit."
+          else
+            git commit -m "watch: $(date -u +%F) auto-journal + dashboard refresh"
+            git push
           fi
 
       - name: Write run summary

@@ -12,6 +12,7 @@ import re
 from pathlib import Path
 
 ROOT = Path(__file__).parent
+MAX_JOURNAL_CARDS = 40   # cap cards so daily auto-logging stays readable; full history stays in the .md
 
 # ---------------------------------------------------------------------------
 # Parse trading_journal.md — one card per dated entry
@@ -196,8 +197,11 @@ def render(entries, levels_info):
           <div class="level-state">{lv['state']}</div>
         </div>"""
 
+    shown = entries[:MAX_JOURNAL_CARDS]
+    journal_note = (f"<div class='subtitle'>Showing latest {len(shown)} of {len(entries)} entries "
+                    f"(full history in trading_journal.md).</div>") if len(entries) > len(shown) else ""
     journal_rows = ""
-    for e in entries:
+    for e in shown:
         review_cls = "pending" if e["review"] == "Pending" else "done"
         journal_rows += f"""
         <div class="journal-card">
@@ -300,6 +304,7 @@ def render(entries, levels_info):
   </div>
 
   <h2>Daily / Weekly Trading Journal</h2>
+  {journal_note}
   {journal_rows if journal_rows else "<p class='subtitle'>No entries yet.</p>"}
 
   <h2>Backtest Track Record (21 Runs)</h2>

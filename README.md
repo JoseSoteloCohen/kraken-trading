@@ -65,15 +65,20 @@ for a daily-candle system — hourly just adds noise.
 `.github/workflows/daily-watch.yml` runs the mechanical watcher in GitHub's cloud on a daily cron
 (00:10 UTC), with **no secrets** and **no machine on**:
 
-- Runs `python3 watch.py --confirmed` — judging the **last completed daily candle**, so a break must
-  be a real daily *close*, not an intraday poke.
+- Runs `python3 watch.py --confirmed --journal` — judging the **last completed daily candle**, so a
+  break must be a real daily *close*, not an intraday poke, and appending a dated record per pair to
+  `trading_journal.md` (idempotent — it won't double-log a date).
+- Regenerates `dashboard.html` and **commits both back to the repo**, so the journal + dashboard stay
+  current with your computer off.
 - Every run writes a readable summary to the Actions run (the job summary).
 - **On a confirmed break** it opens a GitHub issue (labelled `kraken-break`, assigned to you) — which
   GitHub emails you. If a break issue is already open it comments instead of spamming. It **never
   trades** — the issue is a "go review for an entry" alert.
 
-Enable it once: push this repo, open the repo's **Actions** tab, enable workflows if prompted, then
-use **Run workflow** on "Kraken daily watch" to test on demand. After that it's automatic.
+Enable it once: push this repo, open the repo's **Actions** tab, enable workflows if prompted, set
+**Settings → Actions → General → Workflow permissions → Read and write** (needed to open issues and
+commit the journal/dashboard back), then use **Run workflow** on "Kraken daily watch" to test. After
+that it's automatic.
 
 This is the simplest true machine-off option; the Claude Routine above is the richer one (adds the
 judgment + journaling layer) if you want it.

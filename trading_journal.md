@@ -53,3 +53,10 @@ Entry template:
 - Prediction: stay FLAT; watch daily for a confirmed close beyond €1,400 (down) or €1,550 (up)
   with >=0.5-1% margin. Re-check at next weekly review (~2026-06-22) or sooner on a confirmed break.
 - Review (filled in later): _pending_.
+
+### 2026-06-15 21:36 — ETHEUR
+- Market snapshot: intraday re-check (US–Iran peace-deal relief rally lifted both pairs). ETH price ~€1,567, today's in-progress daily candle high €1,594, poking ~1.2% ABOVE the €1,550 upside trigger — but this is the IN-PROGRESS candle, NOT a confirmed daily close. Regime BEAR (200d MA €2,055), EMA bear (21=€1,557 < 55=€1,708), still far below the Donchian 20d-high €1,780. BTC similar lift to ~€57,300, still ~0.3% BELOW its €57,500 trigger.
+- Recommendation/reasoning: FLAT — do not chase. The break is unconfirmed (intraday poke, not a daily close; Run 5 showed these whipsaw), the catalyst is macro relief not ETH-specific, and the structure is still bearish. No both-systems agreement.
+- Action taken: no action.
+- Prediction: decision is the 00:00 UTC daily close. Confirm = a daily CLOSE ≥ ~€1,558 (ETH) or ~€57,790 (BTC) → CAUTIOUS reduced-size LONG candidate to review (never auto-trade). A fade back under = stay FLAT. The GitHub Actions watcher (watch.py --confirmed) catches the confirmed close at 00:10 UTC.
+- Review (filled in later): _pending_.
