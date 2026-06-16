@@ -20,6 +20,8 @@ demonstrated out-of-sample alpha — see `backtest_journal.md`).
 | `backtest_journal.md` | Every backtest run + the lessons that justify each rule. |
 | `sources.md` | Vetted, credibility-tiered news sources (+ blocklist). |
 | `.claude/loop.md` | Instructions the cloud Routine follows each run. |
+| `ta_charts.py` | Builds chart data + a factual readout (regime, EMA, Donchian, RSI, levels_watch triggers) for `dashboard.html`. |
+| `generate_dashboard.py` / `dashboard.html` | Static dashboard: current levels, **Technical Analysis charts** (price + EMA21/55 + 200d SMA + Donchian channels + RSI, with a plain-language read), the trading journal, and the backtest track record. |
 
 ## Run it by hand
 
@@ -31,7 +33,12 @@ python3 backtester.py run BTCEUR      # single backtest (auto-fetches data)
 python3 backtester.py signals BTCEUR  # live parallel-systems snapshot
 python3 backtester.py ts BTCEUR       # two-stage exit walk-forward (Run 19)
 python3 backtester.py breakout BTCEUR # Carver breakout comparison (Run 20)
+python3 generate_dashboard.py         # regenerate dashboard.html (incl. TA charts)
 ```
+
+`generate_dashboard.py` pulls fresh OHLC for BTCEUR/ETHEUR for the TA charts (same Kraken public
+API as the rest of the toolkit); if it's unreachable it falls back to the last cached data, or
+skips that pair's chart with a note if no cache exists either.
 
 `watch.py` exits `10` when a confirmed break has fired and `0` when all quiet, so a plain cron
 job can branch on it: `python3 watch.py || notify-me`.
