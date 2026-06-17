@@ -74,3 +74,14 @@ Entry template:
 - Action taken: no action (mechanical watch — never trades).
 - Prediction: re-checked daily; a confirmed break = daily close beyond a trigger by >=0.5%.
 - Review (filled in later): _pending_.
+
+### 2026-06-17 — BTCEUR / ETHEUR
+- Market snapshot: unavailable. `python3 watch.py` failed before pulling any data — outbound network
+  requests to `api.kraken.com` returned HTTP 403 in this environment (the same proxy also blocked
+  `google.com` and `api.github.com`, while plain `github.com` succeeded, so this looks like an
+  environment network allowlist that does not include Kraken's API, not a Kraken-side block).
+- Recommendation/reasoning: no verdict possible — no live price was fetched, so no break check, regime
+  check, or exit-level check could run. This is not a reviewed FLAT call; it is "watch did not run."
+- Action taken: no action.
+- Prediction: n/a — re-run once network access to api.kraken.com is restored.
+- Review (filled in later): _pending_.
