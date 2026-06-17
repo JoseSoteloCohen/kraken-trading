@@ -90,6 +90,14 @@ that it's automatic.
 This is the simplest true machine-off option; the Claude Routine above is the richer one (adds the
 judgment + journaling layer) if you want it.
 
+### Live dashboard (GitHub Pages)
+
+The daily workflow also **publishes `dashboard.html` to GitHub Pages** on each run, so there's an
+always-current URL — no `git pull` or opening files locally. One-time setup: repo **Settings → Pages
+→ Build and deployment → Source: GitHub Actions**. After the next run (or a manual **Run workflow**)
+the dashboard is live at `https://josesotelocohen.github.io/kraken-trading/` and re-publishes
+automatically every day.
+
 ## Rules baked in (see `backtest_journal.md` for the evidence)
 
 - Trade **confirmed breaks**, never reversals/bounces. Marginal pokes don't count (≥0.5–1% margin).

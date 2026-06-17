@@ -15,6 +15,8 @@ on:
 permissions:
   contents: write              # commit the journal + dashboard back to the repo
   issues: write                # open/comment the alert issue
+  pages: write                 # publish the dashboard to GitHub Pages
+  id-token: write              # required by actions/deploy-pages (OIDC)
 
 concurrency:
   group: kraken-watch
@@ -100,3 +102,25 @@ jobs:
                     + `*Close this issue once you've reviewed/acted; a fresh one opens on the next new break.*`,
               });
             }
+
+  # Publish the freshly-committed dashboard to GitHub Pages so there's a live URL
+  # that auto-updates each run — no git pull / local open needed.
+  deploy-pages:
+    needs: watch
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - uses: actions/checkout@v4        # gets the dashboard the watch job just committed
+      - name: Stage dashboard as the Pages site (index.html)
+        shell: bash
+        run: |
+          mkdir -p _site
+          cp dashboard.html _site/index.html
+      - uses: actions/configure-pages@v5
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: _site
+      - id: deployment
+        uses: actions/deploy-pages@v4
