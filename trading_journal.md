@@ -60,3 +60,17 @@ Entry template:
 - Action taken: no action.
 - Prediction: decision is the 00:00 UTC daily close. Confirm = a daily CLOSE ≥ ~€1,558 (ETH) or ~€57,790 (BTC) → CAUTIOUS reduced-size LONG candidate to review (never auto-trade). A fade back under = stay FLAT. The GitHub Actions watcher (watch.py --confirmed) catches the confirmed close at 00:10 UTC.
 - Review: Confirmed NO break — ETH 06-15 closed €1,549, below the €1,558 confirm level. The intraday poke faded exactly as flagged; waiting for the daily close avoided a whipsaw (validates the Run 5 break-quality discipline).
+
+### 2026-06-16 — BTCEUR
+- Market snapshot: automated daily watch (confirmed close). price ~€56,527. Regime BEAR (200d MA €66,231). EMA 21/55 bear (57,630/60,903). Donchian 20d-high €63,991. Two-stage exit tight8 €53,294/wide10 €52,923. Triggers: down €51,000, up €57,500.
+- Recommendation/reasoning: FLAT — no confirmed break. Mechanical daily watch (GitHub Actions); the human/Claude layer makes the actual call on a confirmed break.
+- Action taken: no action (mechanical watch — never trades).
+- Prediction: re-checked daily; a confirmed break = daily close beyond a trigger by >=0.5%.
+- Review (filled in later): _pending_.
+
+### 2026-06-16 — ETHEUR
+- Market snapshot: automated daily watch (confirmed close). price ~€1,543. Regime BEAR (200d MA €2,050). EMA 21/55 bear (1,555/1,702). Donchian 20d-high €1,741. Two-stage exit tight8 €1,405/wide10 €1,364. Triggers: down €1,400, up €1,550.
+- Recommendation/reasoning: FLAT — no confirmed break. Mechanical daily watch (GitHub Actions); the human/Claude layer makes the actual call on a confirmed break.
+- Action taken: no action (mechanical watch — never trades).
+- Prediction: re-checked daily; a confirmed break = daily close beyond a trigger by >=0.5%.
+- Review (filled in later): _pending_.
