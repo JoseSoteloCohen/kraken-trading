@@ -83,11 +83,13 @@ def dstr(t):
 # ---------------------------------------------------------------- strategy
 
 def run_strategy(bars, entry_lookback=20, exit_lookback=10, entry_margin=0.005,
-                 target_vol=None, vol_window=20, regime_ma=None):
+                 target_vol=None, vol_window=20, regime_ma=None, size_ma=None, bear_size=1.0):
     """Return (equity_curve, trades, daily_returns) for the long-only breakout strategy.
     equity starts at 1.0. Fees charged on each entry and exit.
     If regime_ma set, only enter when close > SMA(regime_ma) (bull regime), and exit if
-    close falls below that SMA (regime stop)."""
+    close falls below that SMA (regime stop).
+    If size_ma/bear_size set, SOFT-scale the entry size by bear_size when entering below
+    SMA(size_ma) — a regime down-weight (vs regime_ma's hard in/out gate)."""
     equity = 1.0
     pos = 0.0          # fraction of equity currently long (0..1)
     entry_price = None
@@ -96,6 +98,7 @@ def run_strategy(bars, entry_lookback=20, exit_lookback=10, entry_margin=0.005,
     trades = []
     closes = [b["c"] for b in bars]
     reg = sma(closes, regime_ma) if regime_ma else None
+    sreg = sma(closes, size_ma) if size_ma else None
 
     for i in range(len(bars)):
         c = bars[i]["c"]
@@ -123,6 +126,8 @@ def run_strategy(bars, entry_lookback=20, exit_lookback=10, entry_margin=0.005,
                     rets = [bars[j]["c"]/bars[j-1]["c"]-1 for j in range(i-vol_window+1, i+1)]
                     rv = statistics.pstdev(rets) or 1e-9
                     size = min(1.0, target_vol / rv)
+                if sreg is not None and sreg[i] is not None and c < sreg[i]:
+                    size *= bear_size                   # soft regime down-weight at entry
                 pos = size
                 entry_price = c
                 equity *= (1.0 - FEE * size)
@@ -1023,6 +1028,45 @@ def cmd_walkforward(args):
     print("\n(Windows overlap, so they are NOT independent — read the SPREAD, not the counts, as the")
     print(" reliability signal: a wide spread means the single 60/40 number was one draw from a broad range.)")
 
+def cmd_sizing(args):
+    """Validate POSITION SIZING (vol-targeting + soft regime down-weight) the rigorous way — across the
+    rolling walk-forward DISTRIBUTION, not a single split. Sizing can't create alpha (Run 6/24); the
+    question is whether it improves the risk-adjusted profile (Sharpe / maxDD) without giving back too
+    much return. --weekly uses the multi-cycle history. Long-only/unleveraged: sizing only scales DOWN."""
+    weekly = getattr(args, "weekly", False)
+    interval, ppy = (10080, 52) if weekly else (1440, 365)
+    unit = "wk" if weekly else "d"
+    regma = 29 if weekly else 200                       # ~200 calendar days either way
+    bars = load(args.pair, interval=interval); n = len(bars)
+    W, S = (104, 13) if weekly else (180, 30)
+    tv60, tv40 = 0.60 / math.sqrt(ppy), 0.40 / math.sqrt(ppy)   # annualized-vol targets -> per-bar
+    modes = [
+        ("baseline (full size)", dict()),
+        ("vol-target 60%/yr", dict(target_vol=tv60)),
+        ("vol-target 40%/yr", dict(target_vol=tv40)),
+        (f"regime half-size (<{regma}{unit} MA)", dict(size_ma=regma, bear_size=0.5)),
+    ]
+    q = lambda xs, p: sorted(xs)[int(p*(len(xs)-1))]
+    print(f"Data: {args.pair} {'WEEKLY' if weekly else 'DAILY'}  {dstr(bars[0]['t'])} -> {dstr(bars[-1]['t'])}  ({n} {unit})")
+    print(f"Rolling walk-forward window {W}{unit}/step {S}{unit} — MEDIANS across windows "
+          f"(sizing can't add alpha; watch Sharpe/maxDD vs return give-up).\n")
+    print(f"  {'sizing mode':<32}{'med ret':>9}{'med Sh':>8}{'med DD':>8}{'beat hold':>11}{'expo':>7}")
+    for label, kw in modes:
+        rets, shs, dds, exps, beat, nwin = [], [], [], [], 0, 0
+        i = 0
+        while i + W <= n:
+            seg = bars[i:i+W]
+            eq, tr, dr = run_strategy(seg, 20, 10, 0.005, **kw)
+            m = metrics(seg, eq, tr, dr, ppy=ppy)
+            rets.append(m["strategy_return"]); shs.append(m["sharpe"]); dds.append(m["max_drawdown"])
+            exps.append(m["exposure"]); beat += 1 if m["vs_buyhold"] > 0 else 0; nwin += 1
+            i += S
+        print(f"  {label:<32}{q(rets,.5)*100:>+8.0f}%{q(shs,.5):>8.2f}{q(dds,.5)*100:>+7.0f}%"
+              f"{beat/nwin*100:>10.0f}%{sum(exps)/len(exps)*100:>6.0f}%")
+    print("\nRead: adopt a sizing lever only if it improves median Sharpe AND median maxDD consistently,")
+    print("without crushing median return. Otherwise it's inert — keep full size, don't add complexity for")
+    print("noise. Check BOTH daily and --weekly before trusting it.")
+
 def cmd_signals(args):
     """Live snapshot: current state of BOTH systems + regime, for running them in parallel.
     Donchian exit uses the Run 19 structural two-stage stop: tight 8d-low until the trade is
@@ -1139,6 +1183,8 @@ def main():
     ph = sub.add_parser("htest"); ph.add_argument("pair")          # multi-year weekly backtest
     pwf = sub.add_parser("wf"); pwf.add_argument("pair")           # rolling walk-forward distribution
     pwf.add_argument("--weekly", action="store_true", help="use multi-cycle weekly history")
+    psz = sub.add_parser("size"); psz.add_argument("pair")         # position-sizing validation
+    psz.add_argument("--weekly", action="store_true", help="use multi-cycle weekly history")
     a = p.parse_args()
     if a.cmd == "fetch":
         print("cached:", fetch(a.pair))
@@ -1174,6 +1220,8 @@ def main():
         cmd_history(a)
     elif a.cmd == "wf":
         cmd_walkforward(a)
+    elif a.cmd == "size":
+        cmd_sizing(a)
 
 if __name__ == "__main__":
     main()

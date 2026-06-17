@@ -861,6 +861,40 @@ substantial long-run return vs simply holding** — worth it only if you can't s
 No alpha (reconfirmed across regimes). Don't oversell adopted refinements (Run 19) — they're noise at
 this trade count. `htest` / `wf` are the new honest-validation defaults.
 
+## Run 25: Position-sizing validation (vol-targeting + regime down-weight) — rigorous, INERT / not-robust
+
+The validation's recommended next step: test position sizing the *rigorous* way (rolling walk-forward
+distribution, daily + multi-cycle weekly), not a single split. Added a soft regime down-weight
+(`run_strategy` `size_ma`/`bear_size`, default off) and `backtester.py size <PAIR> [--weekly]`. Sizing
+cannot create alpha (Run 6/24) — the only question is whether it improves Sharpe/maxDD without crushing
+return.
+
+| Weekly medians | BTC Sharpe / DD | ETH Sharpe / DD |
+|---|---|---|
+| baseline (full size) | 0.88 / −27% | 0.59 / −46% |
+| vol-target 60%/yr | 0.80 / −27% | 0.62 / −33% |
+| vol-target 40%/yr | 0.73 / −22% | 0.62 / −25% |
+| regime half-size (<MA) | **0.88 / −27% (identical)** | **0.59 / −46% (identical)** |
+
+### Findings
+1. **Regime half-size is INERT** — identical to baseline on every metric, asset, and frequency. A
+   long-only breakout almost never *enters* below its 200d/29wk MA (you can't break to 20-day highs
+   while under the long average), so the down-weight never triggers. The entry rule already encodes the
+   regime filter — adding a soft one is redundant.
+2. **Vol-targeting is NOT robust across assets.** Helps ETH (Sharpe 0.59→0.62, median DD −46%→−25%,
+   minimal return give-up) but hurts BTC (Sharpe 0.88→0.73, negligible DD benefit). Daily is worse (vt
+   cuts Sharpe on both). Asset/frequency-dependent + a free parameter = the same "helps one, hurts the
+   other" signature as every rejected refinement. Reconfirms Run 6 ("vol-targeting did not help") with
+   the rigorous distribution + multi-cycle data.
+3. The only *consistent* effect of vol-targeting is scaling exposure DOWN → trading return for
+   (sometimes) lower DD. If pure drawdown-minimization were the sole objective, aggressive vt-40% is a
+   known dial (ETH DD −46%→−25%) — but it's a trade-off, not a Sharpe improvement.
+
+**Verdict: KEEP FULL SIZE (1.0).** No sizing lever robustly improves the risk-adjusted profile. The
+honest edge remains drawdown reduction from the trend exit itself (Run 24), not from sizing cleverness.
+`run_strategy` gained `size_ma`/`bear_size` (default off); `backtester.py size <PAIR> [--weekly]` is the
+validation tool.
+
 ## Future runs
 - Re-run `backtester.py validate` periodically as the OOS window grows / new regimes appear.
 - If ever pursuing the ensemble, size mean-rev below equal weight and re-validate.

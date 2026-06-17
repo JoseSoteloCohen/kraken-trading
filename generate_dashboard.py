@@ -89,7 +89,7 @@ def parse_levels():
 
 
 # ---------------------------------------------------------------------------
-# Curated summary of backtest_journal.md (24 runs) — hand-extracted highlights
+# Curated summary of backtest_journal.md (25 runs) — hand-extracted highlights
 # ---------------------------------------------------------------------------
 BACKTEST_RUNS = [
     dict(n=1, title="BTC/USD daily, 5 weeks (hindsight)", status="info",
@@ -164,6 +164,9 @@ BACKTEST_RUNS = [
     dict(n=24, title="Multi-cycle weekly + rolling walk-forward (reliability upgrade)", status="key",
          result="Over full cycles buy-and-hold OUT-RETURNS the trend rule; it beats hold in only ~1/3 of 2yr windows",
          takeaway="CORRECTS the 'beats buy-and-hold' framing — that was the favorable 2024-26 window. The only regime-robust property is drawdown reduction (BTC -67% vs -81% hold; ETH -74% vs -92%). No alpha across regimes; small-sample persists even at 13yr."),
+    dict(n=25, title="Position-sizing validation (vol-target + regime down-weight)", status="rejected",
+         result="Regime down-weight inert; vol-targeting helps ETH but hurts BTC — not robust",
+         takeaway="Keep full size. No sizing lever consistently improves Sharpe AND maxDD without giving up return. Validated on the rolling walk-forward distribution + multi-cycle weekly; reconfirms Run 6."),
 ]
 
 # Cumulative equity curves for the two data-rich runs (per-decision P&L, $10k notional)
@@ -407,7 +410,7 @@ def render(entries, levels_info, ta_data):
   {journal_note}
   {journal_rows if journal_rows else "<p class='subtitle'>No entries yet.</p>"}
 
-  <h2>Backtest Track Record (24 Runs)</h2>
+  <h2>Backtest Track Record (25 Runs)</h2>
   <div class="charts-row">
     <div class="chart-wrap">
       <h3>Run 1 — BTC/USD daily, 5 weeks (hindsight)</h3>
