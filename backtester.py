@@ -42,8 +42,9 @@ KRAKEN_API = "https://api.kraken.com/0/public"
 # (e.g. XXBTZEUR); load() takes the first non-"last" key so it doesn't matter.
 PAIR_MAP = {"BTCEUR": "XBTEUR", "ETHEUR": "ETHEUR"}
 
-def _cache_path(pair):
-    return os.path.join(tempfile.gettempdir(), f"bt_{pair}.json")
+def _cache_path(pair, interval=1440):
+    suffix = "" if interval == 1440 else f"_{interval}"   # daily keeps the original name
+    return os.path.join(tempfile.gettempdir(), f"bt_{pair}{suffix}.json")
 
 def _api_get(path):
     with urllib.request.urlopen(f"{KRAKEN_API}/{path}", timeout=30) as r:
@@ -52,10 +53,10 @@ def _api_get(path):
         raise RuntimeError(f"Kraken API error ({path}): {d['error']}")
     return d["result"]
 
-def fetch(pair, cache=None):
-    """Pull daily OHLC from Kraken's public API and cache it. Returns the cache path."""
-    cache = cache or _cache_path(pair)
-    res = _api_get(f"OHLC?pair={PAIR_MAP.get(pair, pair)}&interval=1440")
+def fetch(pair, cache=None, interval=1440):
+    """Pull OHLC from Kraken's public API and cache it. interval: 1440 daily / 10080 weekly."""
+    cache = cache or _cache_path(pair, interval)
+    res = _api_get(f"OHLC?pair={PAIR_MAP.get(pair, pair)}&interval={interval}")
     json.dump(res, open(cache, "w"))   # res = {"<pairkey>": [...rows...], "last": ...}
     return cache
 
@@ -65,10 +66,10 @@ def fetch_ticker(pair):
     k = [x for x in res][0]
     return float(res[k]["c"][0])       # "c" = [last_price, lot_volume]
 
-def load(pair, cache=None, refresh=False):
-    cache = cache or _cache_path(pair)
+def load(pair, cache=None, refresh=False, interval=1440):
+    cache = cache or _cache_path(pair, interval)
     if refresh or not os.path.exists(cache):
-        fetch(pair, cache)
+        fetch(pair, cache, interval)
     d = json.load(open(cache))
     k = [x for x in d if x != "last"][0]
     rows = d[k]
@@ -644,14 +645,15 @@ def max_drawdown(curve):
         mdd = min(mdd, v/peak - 1.0)
     return mdd
 
-def sharpe(daily_rets):
+def sharpe(daily_rets, ppy=365):
+    """Annualized Sharpe. ppy = periods per year: 365 for daily bars, 52 for weekly."""
     rs = [r for r in daily_rets]
     if len(rs) < 2: return 0.0
     mu = statistics.mean(rs); sd = statistics.pstdev(rs)
     if sd == 0: return 0.0
-    return (mu / sd) * math.sqrt(365)  # crypto trades 365d
+    return (mu / sd) * math.sqrt(ppy)
 
-def metrics(bars, eq_curve, trades, daily_rets):
+def metrics(bars, eq_curve, trades, daily_rets, ppy=365):
     strat_ret = eq_curve[-1] - 1.0
     bh_ret = bars[-1]["c"] / bars[0]["c"] - 1.0
     closed = [t for t in trades if "ret" in t]
@@ -670,7 +672,7 @@ def metrics(bars, eq_curve, trades, daily_rets):
                      if (len(closed) - len(wins)) else 0.0),
         "max_drawdown": max_drawdown(eq_curve),
         "buyhold_max_dd": max_drawdown([b["c"] for b in bars]),
-        "sharpe": sharpe(daily_rets),
+        "sharpe": sharpe(daily_rets, ppy),
         "exposure": exposure,
     }
 
@@ -913,12 +915,12 @@ def cmd_frameworks(args):
     print(f"  Donchian vs Mean-rev  : {correl(don[2], mr[2]):+.2f}  (want low/neg — diversifier)")
     print(f"  Donchian vs Adaptive  : {correl(don[2], adp[2]):+.2f}")
 
-def metrics_from_rets(rets):
-    """Windowed metrics from a slice of daily returns."""
+def metrics_from_rets(rets, ppy=365):
+    """Windowed metrics from a slice of per-bar returns. ppy: 365 daily / 52 weekly."""
     eq = [1.0]
     for r in rets:
         eq.append(eq[-1]*(1.0+r))
-    return {"ret": eq[-1]-1.0, "dd": max_drawdown(eq), "sharpe": sharpe(rets)}
+    return {"ret": eq[-1]-1.0, "dd": max_drawdown(eq), "sharpe": sharpe(rets, ppy)}
 
 def cmd_validate(args):
     """Walk-forward validation of the trend+mean-rev ensemble: split into train (first 60%)
@@ -946,6 +948,80 @@ def cmd_validate(args):
         print(f"  corr(Donchian, MeanRev) in window: {correl(don[s:e], mr[s:e]):+.2f}\n")
     print("PASS if, out-of-sample: ensemble Sharpe >= best single system AND/OR ensemble maxDD")
     print("is smaller, AND corr(trend, mean-rev) stays low. Otherwise the benefit was in-sample luck.")
+
+def cmd_history(args):
+    """Multi-year WEEKLY backtest of the fixed default rule (20/10/0.5%) across MULTIPLE cycles —
+    directly addresses the 'one regime / ~2yr' reliability limit. BTC ~12.8yr, ETH ~10.8yr. Reports
+    the full period vs buy&hold plus a per-calendar-year breakdown so you can see how the SAME rules
+    fare across bull and bear regimes. Weekly Sharpe (ppy=52)."""
+    import datetime as _dt
+    bars = load(args.pair, interval=10080)
+    closes = [b["c"] for b in bars]
+    eq, tr, dr = run_strategy(bars, 20, 10, 0.005)
+    bh = closes[-1] / closes[0] - 1.0
+    m = metrics(bars, eq, tr, dr, ppy=52)
+    print(f"Data: {args.pair} WEEKLY  {dstr(bars[0]['t'])} -> {dstr(bars[-1]['t'])}  ({len(bars)} weeks)")
+    print(f"FULL: strat {m['strategy_return']*100:+.0f}%  buy&hold {bh*100:+.0f}%  edge {m['vs_buyhold']*100:+.0f}%  "
+          f"| maxDD {m['max_drawdown']*100:.0f}% (hold {m['buyhold_max_dd']*100:.0f}%)  Sharpe {m['sharpe']:.2f}  "
+          f"trades {m['n_trades']}  time-in-market {m['exposure']*100:.0f}%\n")
+    yr = lambda t: _dt.datetime.fromtimestamp(t, _dt.timezone.utc).year
+    dyr = [yr(bars[j+1]["t"]) for j in range(len(dr))]          # year each return-bar lands in
+    print(f"{'year':<6}{'strat':>9}{'buy&hold':>10}{'edge':>8}{'trades':>8}{'regime':>9}")
+    for y in sorted({yr(b["t"]) for b in bars}):
+        idx = [i for i, b in enumerate(bars) if yr(b["t"]) == y]
+        if len(idx) < 2: continue
+        bh_y = closes[idx[-1]] / closes[idx[0]] - 1.0
+        sr = 1.0
+        for j in range(len(dr)):
+            if dyr[j] == y: sr *= (1.0 + dr[j])
+        sr -= 1.0
+        ntr = sum(1 for t in tr if yr(bars[t["entry_i"]]["t"]) == y)
+        print(f"{y:<6}{sr*100:>+8.0f}%{bh_y*100:>+9.0f}%{(sr-bh_y)*100:>+7.0f}%{ntr:>8}{'BULL' if bh_y>0 else 'bear':>9}")
+    print("\nRead: across many regimes the trend rule should cut drawdown vs hold and survive bears by")
+    print("going to cash, while giving back edge in chop. (First partial year ~21wk is warm-up.) No alpha.")
+
+def cmd_walkforward(args):
+    """Rolling-window walk-forward: instead of ONE 60/40 split, run the fixed rule over MANY windows
+    and report the DISTRIBUTION of out-of-sample outcomes — exposing how fragile the single number is.
+    --weekly spans the multi-cycle history; default is daily."""
+    weekly = getattr(args, "weekly", False)
+    interval, ppy = (10080, 52) if weekly else (1440, 365)
+    unit = "wk" if weekly else "d"
+    bars = load(args.pair, interval=interval); n = len(bars)
+    W, S = (104, 13) if weekly else (180, 30)                   # window, step (in bars)
+    res = []
+    i = 0
+    while i + W <= n:
+        seg = bars[i:i+W]
+        eq, tr, dr = run_strategy(seg, 20, 10, 0.005)
+        m = metrics(seg, eq, tr, dr, ppy=ppy)
+        res.append({"start": dstr(seg[0]["t"]), "end": dstr(seg[-1]["t"]), "ret": m["strategy_return"],
+                    "bh": seg[-1]["c"]/seg[0]["c"]-1.0, "edge": m["vs_buyhold"],
+                    "sharpe": m["sharpe"], "dd": m["max_drawdown"]})
+        i += S
+    if not res:
+        print("not enough data for the chosen window"); return
+    q = lambda xs, p: sorted(xs)[int(p*(len(xs)-1))]
+    rets = [r["ret"] for r in res]; edges = [r["edge"] for r in res]
+    shs = [r["sharpe"] for r in res]; dds = [r["dd"] for r in res]
+    beat = sum(1 for e in edges if e > 0) / len(res)
+    pos = sum(1 for r in rets if r > 0) / len(res)
+    nonov = (n - W)//W + 1
+    print(f"Data: {args.pair} {'WEEKLY' if weekly else 'DAILY'}  {dstr(bars[0]['t'])} -> {dstr(bars[-1]['t'])}  ({n} {unit})")
+    print(f"Rolling walk-forward: window {W}{unit} / step {S}{unit} -> {len(res)} windows "
+          f"(~{nonov} non-overlapping). Each = a self-contained backtest of the FIXED 20/10/0.5% rule.\n")
+    print(f"  {'metric':<20}{'min':>9}{'median':>9}{'max':>9}")
+    print(f"  {'strategy return':<20}{q(rets,0)*100:>+8.0f}%{q(rets,.5)*100:>+8.0f}%{q(rets,1)*100:>+8.0f}%")
+    print(f"  {'edge vs hold':<20}{q(edges,0)*100:>+8.0f}%{q(edges,.5)*100:>+8.0f}%{q(edges,1)*100:>+8.0f}%")
+    print(f"  {'Sharpe (ann.)':<20}{q(shs,0):>9.2f}{q(shs,.5):>9.2f}{q(shs,1):>9.2f}")
+    print(f"  {'max drawdown':<20}{q(dds,0)*100:>+8.0f}%{q(dds,.5)*100:>+8.0f}%{q(dds,1)*100:>+8.0f}%")
+    print(f"\n  windows beating buy & hold : {beat*100:.0f}%")
+    print(f"  windows with positive ret  : {pos*100:.0f}%")
+    w = min(res, key=lambda r: r["edge"]); b = max(res, key=lambda r: r["edge"])
+    print(f"  worst vs hold: {w['start']}->{w['end']}  strat {w['ret']*100:+.0f}% vs hold {w['bh']*100:+.0f}%")
+    print(f"  best  vs hold: {b['start']}->{b['end']}  strat {b['ret']*100:+.0f}% vs hold {b['bh']*100:+.0f}%")
+    print("\n(Windows overlap, so they are NOT independent — read the SPREAD, not the counts, as the")
+    print(" reliability signal: a wide spread means the single 60/40 number was one draw from a broad range.)")
 
 def cmd_signals(args):
     """Live snapshot: current state of BOTH systems + regime, for running them in parallel.
@@ -1060,6 +1136,9 @@ def main():
     ptc = sub.add_parser("tcb"); ptc.add_argument("pair")
     pts = sub.add_parser("ts"); pts.add_argument("pair")
     pbo = sub.add_parser("breakout"); pbo.add_argument("pair")
+    ph = sub.add_parser("htest"); ph.add_argument("pair")          # multi-year weekly backtest
+    pwf = sub.add_parser("wf"); pwf.add_argument("pair")           # rolling walk-forward distribution
+    pwf.add_argument("--weekly", action="store_true", help="use multi-cycle weekly history")
     a = p.parse_args()
     if a.cmd == "fetch":
         print("cached:", fetch(a.pair))
@@ -1091,6 +1170,10 @@ def main():
         cmd_ts(a)
     elif a.cmd == "breakout":
         cmd_breakout(a)
+    elif a.cmd == "htest":
+        cmd_history(a)
+    elif a.cmd == "wf":
+        cmd_walkforward(a)
 
 if __name__ == "__main__":
     main()

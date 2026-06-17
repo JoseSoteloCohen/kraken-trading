@@ -820,6 +820,47 @@ test (timed carry harvesting only positive funding, with basis + fee + liquidati
 only way to know if a TIMED version beats always-on, but the modest ceiling tempers the priority.
 Data tooling now proven (Kraken Futures v4 funding endpoint). Not built into a strategy yet.
 
+## Run 24: Reliability upgrade — multi-cycle WEEKLY history + rolling walk-forward distribution (CORRECTS the "beats buy-and-hold" framing)
+
+Triggered by a `/validate-data` self-audit, which flagged that every prior conclusion rested on **one
+~2yr window** (721 daily candles, one regime) with the whole result driven by **~2 trades per asset**
+(BTC top-2 trades = +67% of a +43% total; ETH top-2 = +67% of a −6% total). Built two tools:
+`backtester.py htest <PAIR>` (fixed 20/10/0.5% rule on **weekly** data: BTC 12.8yr/667wk/~3 cycles,
+ETH 10.8yr/567wk) and `wf <PAIR> [--weekly]` (rolling-window walk-forward → a **distribution** of OOS
+outcomes instead of one 60/40 number). `sharpe`/`metrics` now take `ppy` (52 weekly); data layer takes
+`interval` (daily unchanged, so the live watcher is untouched).
+
+| Multi-cycle weekly | BTC (12.8yr) | ETH (10.8yr) |
+|---|---|---|
+| Strategy total return | +9,977% | +118,482% |
+| **Buy & hold total return** | **+57,588%** | **+138,431%** |
+| Max drawdown (strat vs hold) | −67% vs **−81%** | −74% vs **−92%** |
+| Full-period Sharpe / trades | 0.99 / 11 | 1.10 / 10 |
+
+Rolling walk-forward (104wk window, 13wk step, 44/36 windows): **edge-vs-hold median −82% (BTC) /
+−79% (ETH); only 32% / 33% of 2-yr windows beat buy-and-hold;** strategy-return spread −16%→+1586%
+(BTC), Sharpe spread −0.20→2.50. Daily `wf` on the recent 2yr, by contrast: **58–63% beat hold** —
+i.e. 2024–26 was one of the favorable ~1/3 of regimes.
+
+### Findings
+1. **The "beats buy-and-hold" conclusion was regime-specific and is now CORRECTED.** Over a full set
+   of cycles, **buy-and-hold massively out-returns the trend rule** (BTC +57,588% vs +9,977%), and the
+   rule beats hold in only **~1/3 of 2-yr windows** (the choppy/bear ones). Run 6's "beat hold by
+   ~20–31%" was measured in the favorable 2024–26 window — not representative.
+2. **The ONLY durable, regime-robust property is drawdown reduction** (BTC −67% vs −81%, ETH −74% vs
+   −92%; positive edge in every bear year: 2014 +57, 2018 +21, 2022 +59, 2026 +29). The cost of that
+   protection is large: the rule sits out ~57–59% of the time and gives back most bull upside.
+3. **The single 60/40 number is one draw from a huge spread** (edge −1260%→+103%). Always read the
+   distribution; never trust a lone OOS figure. (The compounded edge-% is bull-distorted — the clean
+   signal is "% of windows beating hold.")
+4. **Small-sample persists even over 13yr:** the weekly rule makes only ~10–11 trades, so few-trade
+   fragility is structural, not a data-length artifact.
+
+**Verdict:** Honest framing tightened. This is a **drawdown-reduction overlay that sacrifices
+substantial long-run return vs simply holding** — worth it only if you can't stomach −80%/−90% holds.
+No alpha (reconfirmed across regimes). Don't oversell adopted refinements (Run 19) — they're noise at
+this trade count. `htest` / `wf` are the new honest-validation defaults.
+
 ## Future runs
 - Re-run `backtester.py validate` periodically as the OOS window grows / new regimes appear.
 - If ever pursuing the ensemble, size mean-rev below equal weight and re-validate.
