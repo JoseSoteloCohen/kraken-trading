@@ -1,5 +1,7 @@
 # kraken-trading
 
+**📊 Live dashboard: https://josesotelocohen.github.io/kraken-trading/** — auto-published daily by GitHub Actions (no install, no pull).
+
 A disciplined, mechanical crypto paper-trading workflow for **BTCEUR / ETHEUR** on a small
 (€1,000) unleveraged spot account. The whole point of this system is to resist the impulses that
 lose retail traders money: it trades only *confirmed breaks*, sits in cash when there's no signal,
