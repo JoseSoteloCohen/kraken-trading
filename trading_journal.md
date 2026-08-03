@@ -718,3 +718,17 @@ Entry template:
 - Action taken: no action (mechanical watch — never trades).
 - Prediction: re-checked daily; a confirmed break = daily close beyond a trigger by >=0.5%.
 - Review (filled in later): _pending_.
+
+### 2026-08-02 — BTCEUR
+- Market snapshot: automated daily watch (confirmed close). price ~€55,022. Regime BEAR (200d MA €61,173). EMA 21/55 bear (55,883/56,598). Donchian 20d-high €58,333. Two-stage exit tight8 €54,487/wide10 €54,487. Triggers: down €51,000, up €57,500.
+- Recommendation/reasoning: FLAT — no confirmed break. Mechanical daily watch (GitHub Actions); the human/Claude layer makes the actual call on a confirmed break.
+- Action taken: no action (mechanical watch — never trades).
+- Prediction: re-checked daily; a confirmed break = daily close beyond a trigger by >=0.5%.
+- Review (filled in later): _pending_.
+
+### 2026-08-02 — ETHEUR
+- Market snapshot: automated daily watch (confirmed close). price ~€1,632. Regime BEAR (200d MA €1,802). EMA 21/55 bull (1,631/1,615). Donchian 20d-high €1,714. Two-stage exit tight8 €1,601/wide10 €1,601. Triggers: down €1,400, up €1,550.
+- Recommendation/reasoning: LONG candidate — confirmed upside break (review, never auto-trade). Mechanical daily watch (GitHub Actions); the human/Claude layer makes the actual call on a confirmed break.
+- Action taken: no action (mechanical watch — never trades).
+- Prediction: re-checked daily; a confirmed break = daily close beyond a trigger by >=0.5%.
+- Review (filled in later): _pending_.
